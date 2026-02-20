@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="id" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BG Remover Pro — Penghapus Latar Belakang AI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        .crop-overlay { position:absolute; border:2px dashed #0d6efd; background:rgba(13,110,253,0.08); cursor:move; min-width:30px; min-height:30px; }
+        .crop-handle { position:absolute; width:12px; height:12px; background:#0d6efd; border:2px solid #fff; border-radius:2px; }
+        .crop-handle.tl { top:-6px; left:-6px; cursor:nw-resize; }
+        .crop-handle.tr { top:-6px; right:-6px; cursor:ne-resize; }
+        .crop-handle.bl { bottom:-6px; left:-6px; cursor:sw-resize; }
+        .crop-handle.br { bottom:-6px; right:-6px; cursor:se-resize; }
+        #batchProgress .progress { height:6px; }
+        .lang-switch .btn { min-width:42px; }
+        .local-data-badge { font-size:0.7rem; }
+        #cropContainer { position:relative; display:inline-block; max-width:100%; }
+        #cropContainer img { display:block; max-width:100%; max-height:400px; }
+        .checklist-item { user-select:none; }
+        .checklist-item input:checked + label { text-decoration: line-through; opacity: 0.6; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg border-bottom">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="#">
+            <i class="bi bi-scissors me-2"></i>BG Remover <span class="badge bg-primary align-middle fs-8">PRO</span>
+        </a>
+        <div class="d-flex align-items-center gap-2">
+
+            <div class="btn-group btn-group-sm lang-switch" role="group" id="langSwitch">
+                <button class="btn btn-outline-secondary active" data-lang="id" title="Bahasa Indonesia">ID</button>
+                <button class="btn btn-outline-secondary" data-lang="en" title="English">EN</button>
+            </div>
+            <button id="btnThemeToggle" class="btn btn-outline-secondary btn-sm" title="Toggle tema">
+                <i class="bi bi-moon-stars-fill"></i>
+            </button>
+            <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#helpModal">
+                <i class="bi bi-question-circle"></i> <span data-i18n="help">Bantuan</span>
+            </button>
+            <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#checklistModal">
+                <i class="bi bi-list-check"></i> <span data-i18n="checklist">Checklist</span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<section id="sectionUpload" class="py-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8 text-center">
+                <h1 class="display-5 fw-bold mb-3" data-i18n="heroTitle">Hapus Latar Belakang Gambar <span class="text-primary">Secara Otomatis</span></h1>
+                <p class="lead text-body-secondary mb-4" data-i18n="heroSubtitle">Didukung AI — 100% diproses di browser Anda. Tanpa upload ke server, privasi terjaga.</p>
+
+                <div class="form-check form-switch d-inline-flex align-items-center gap-2 mb-3">
+                    <input class="form-check-input" type="checkbox" id="chkHighQuality">
+                    <label class="form-check-label small" for="chkHighQuality" data-i18n="highQualityLabel">Kualitas tinggi (tanpa downscale, lebih lambat untuk gambar besar)</label>
+                </div>
+
+                <div id="dropZone" class="border border-2 border-dashed rounded-4 p-5 text-center position-relative"
+                     style="cursor:pointer; border-color: var(--bs-primary) !important; transition: all 0.3s;">
+                    <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/bmp,image/heic,image/heif" multiple class="position-absolute top-0 start-0 w-100 h-100 opacity-0" style="cursor:pointer;">
+                    <div id="dropContent">
+                        <i class="bi bi-cloud-arrow-up display-1 text-primary"></i>
+                        <h4 class="mt-3" data-i18n="dropTitle">Seret & Lepas Gambar di Sini</h4>
+                        <p class="text-body-secondary" data-i18n="dropSubtitle">atau klik untuk memilih file (bisa pilih beberapa sekaligus)</p>
+                        <div class="d-flex justify-content-center gap-2 flex-wrap mt-3">
+                            <span class="badge text-bg-secondary">PNG</span>
+                            <span class="badge text-bg-secondary">JPG / JPEG</span>
+                            <span class="badge text-bg-secondary">WEBP</span>
+                            <span class="badge text-bg-secondary">BMP</span>
+                            <span class="badge text-bg-secondary" data-i18n="maxSize">Maks 20MB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="batchProgress" class="mt-3 d-none">
+                    <div class="alert alert-info d-flex align-items-center gap-2 py-2 small">
+                        <i class="bi bi-images"></i>
+                        <span data-i18n="batchQueue">Antrian batch:</span>
+                        <strong><span id="batchCurrent">0</span> / <span id="batchTotal">0</span></strong>
+                        <span data-i18n="batchRemaining">gambar tersisa</span>
+                        <button class="btn btn-sm btn-outline-danger ms-auto" id="btnCancelBatch">
+                            <i class="bi bi-x-circle"></i> <span data-i18n="cancelBatch">Batalkan Antrian</span>
+                        </button>
+                    </div>
+                    <div class="progress">
+                        <div id="batchBar" class="progress-bar" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <p class="text-body-secondary small mb-2" data-i18n="sampleText">Tidak punya gambar? Coba contoh:</p>
+                    <div class="d-flex justify-content-center gap-2 flex-wrap" id="sampleImages">
+                        <button class="btn btn-outline-primary btn-sm sample-btn" data-url="https://images.unsplash.com/photo-1529778873920-4da4926a72c2?w=600">
+                            <i class="bi bi-image me-1"></i>Kucing
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm sample-btn" data-url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600">
+                            <i class="bi bi-image me-1"></i>Potret
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm sample-btn" data-url="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600">
+                            <i class="bi bi-image me-1"></i>Produk
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="sectionProcessing" class="py-5 d-none">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-6 text-center">
+                <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
+                    <span class="visually-hidden">Memproses...</span>
+                </div>
+                <h4 id="processingTitle" data-i18n="processingTitle">Memproses Gambar...</h4>
+                <p class="text-body-secondary" id="processingMessage" data-i18n="processingMsg">Memuat model AI, ini mungkin memerlukan waktu beberapa saat untuk pertama kali...</p>
+                <div class="progress mt-3" style="height: 8px;">
+                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+                </div>
+                <small class="text-body-secondary mt-2 d-block" id="progressText">0%</small>
+                <button class="btn btn-outline-danger btn-sm mt-3" id="btnCancel">
+                    <i class="bi bi-x-circle me-1"></i><span data-i18n="cancelBtn">Batalkan</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="sectionResult" class="py-4 d-none">
+    <div class="container">
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h4 class="mb-0"><i class="bi bi-check-circle-fill text-success me-2"></i><span data-i18n="resultTitle">Hasil Penghapusan Background</span></h4>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-outline-secondary btn-sm" id="btnCropResize" data-bs-toggle="modal" data-bs-target="#cropModal">
+                    <i class="bi bi-crop me-1"></i><span data-i18n="cropResize">Crop & Resize</span>
+                </button>
+                <button class="btn btn-primary btn-sm" id="btnNewImage">
+                    <i class="bi bi-plus-circle me-1"></i><span data-i18n="newImage">Gambar Baru</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="row g-4">
+
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabSideBySide" type="button"><i class="bi bi-layout-split me-1"></i><span data-i18n="sideBySide">Berdampingan</span></button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSlider" type="button"><i class="bi bi-sliders me-1"></i>Slider</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabResultOnly" type="button"><i class="bi bi-image me-1"></i><span data-i18n="resultOnly">Hasil</span></button>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="tab-content">
+
+                            <div class="tab-pane fade show active" id="tabSideBySide">
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <div class="text-center">
+                                            <small class="text-body-secondary fw-semibold">ORIGINAL</small>
+                                            <div class="border rounded mt-1 overflow-hidden" style="aspect-ratio:1; display:flex; align-items:center; justify-content:center; background:#1a1a2e;">
+                                                <img id="imgOrigSide" class="img-fluid" style="max-height:100%; object-fit:contain;" alt="Original">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-center">
+                                            <small class="text-body-secondary fw-semibold" data-i18n="noBg">TANPA BACKGROUND</small>
+                                            <div id="resultContainerSide" class="border rounded mt-1 overflow-hidden" style="aspect-ratio:1; display:flex; align-items:center; justify-content:center; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22><rect width=%2210%22 height=%2210%22 fill=%22%23ccc%22/><rect x=%2210%22 y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23ccc%22/><rect x=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23fff%22/><rect y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23fff%22/></svg>'); background-size:20px 20px;">
+                                                <img id="imgResultSide" class="img-fluid" style="max-height:100%; object-fit:contain;" alt="Hasil">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tab-pane fade" id="tabSlider">
+                                <div id="sliderCompare" class="position-relative overflow-hidden rounded" style="aspect-ratio:4/3; background:#1a1a2e; cursor: ew-resize;">
+                                    <img id="imgOrigSlider" class="position-absolute top-0 start-0 w-100 h-100" style="object-fit:contain;" alt="Original">
+                                    <div id="sliderClipDiv" class="position-absolute top-0 start-0 h-100 overflow-hidden" style="width:50%;">
+                                        <div style="position:relative; width:100%; height:100%; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22><rect width=%2210%22 height=%2210%22 fill=%22%23ccc%22/><rect x=%2210%22 y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23ccc%22/><rect x=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23fff%22/><rect y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23fff%22/></svg>'); background-size:20px 20px;">
+                                            <img id="imgResultSlider" class="position-absolute top-0 start-0 w-100 h-100" style="object-fit:contain;" alt="Hasil">
+                                        </div>
+                                    </div>
+                                    <div id="sliderLine" class="position-absolute top-0 h-100" style="left:50%; width:3px; background:white; transform:translateX(-50%); box-shadow: 0 0 6px rgba(0,0,0,0.5);">
+                                        <div class="position-absolute top-50 start-50 translate-middle bg-white rounded-circle d-flex align-items-center justify-content-center" style="width:36px;height:36px; box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+                                            <i class="bi bi-arrows text-dark"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-center mt-2">
+                                    <small class="text-body-secondary"><i class="bi bi-arrows me-1"></i><span data-i18n="sliderHint">Geser kiri-kanan untuk membandingkan</span></small>
+                                </div>
+                            </div>
+
+                            <div class="tab-pane fade" id="tabResultOnly">
+                                <div id="resultContainerOnly" class="rounded overflow-hidden text-center" style="aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22><rect width=%2210%22 height=%2210%22 fill=%22%23ccc%22/><rect x=%2210%22 y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23ccc%22/><rect x=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23fff%22/><rect y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23fff%22/></svg>'); background-size:20px 20px;">
+                                    <img id="imgResultOnly" class="img-fluid" style="max-height:100%; object-fit:contain;" alt="Hasil">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+
+                <div class="card mb-3">
+                    <div class="card-header fw-semibold"><i class="bi bi-info-circle me-2"></i><span data-i18n="imageInfo">Informasi Gambar</span></div>
+                    <div class="card-body p-3">
+                        <table class="table table-sm table-borderless mb-0 small">
+                            <tr><td class="text-body-secondary" data-i18n="fileName">Nama File</td><td class="fw-semibold text-end text-truncate" style="max-width:150px;" id="infoFileName">-</td></tr>
+                            <tr><td class="text-body-secondary" data-i18n="dimensions">Dimensi</td><td class="fw-semibold text-end" id="infoDimension">-</td></tr>
+                            <tr><td class="text-body-secondary" data-i18n="origSize">Ukuran Asli</td><td class="fw-semibold text-end" id="infoFileSize">-</td></tr>
+                            <tr><td class="text-body-secondary" data-i18n="processTime">Waktu Proses</td><td class="fw-semibold text-end" id="infoProcessTime">-</td></tr>
+                            <tr id="rowScaled" class="d-none"><td class="text-body-secondary" data-i18n="scaled">Di-resize</td><td class="fw-semibold text-end text-warning" id="infoScaled">-</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header fw-semibold"><i class="bi bi-palette me-2"></i><span data-i18n="bgLabel">Latar Belakang</span></div>
+                    <div class="card-body p-3">
+                        <div class="d-flex gap-2 flex-wrap mb-3" id="bgColorOptions">
+                            <button class="btn btn-sm border rounded-circle p-0 bg-option active" data-bg="transparent" title="Transparan" style="width:36px;height:36px; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%2210%22><rect width=%225%22 height=%225%22 fill=%22%23ccc%22/><rect x=%225%22 y=%225%22 width=%225%22 height=%225%22 fill=%22%23ccc%22/><rect x=%225%22 width=%225%22 height=%225%22 fill=%22%23fff%22/><rect y=%225%22 width=%225%22 height=%225%22 fill=%22%23fff%22/></svg>'); background-size:10px 10px;"></button>
+                            <button class="btn btn-sm border rounded-circle p-0 bg-option" data-bg="#ffffff" title="Putih" style="width:36px;height:36px;background:#ffffff;"></button>
+                            <button class="btn btn-sm border rounded-circle p-0 bg-option" data-bg="#000000" title="Hitam" style="width:36px;height:36px;background:#000000;"></button>
+                            <button class="btn btn-sm border rounded-circle p-0 bg-option" data-bg="#ff0000" title="Merah" style="width:36px;height:36px;background:#ff0000;"></button>
+                            <button class="btn btn-sm border rounded-circle p-0 bg-option" data-bg="#00aa00" title="Hijau" style="width:36px;height:36px;background:#00aa00;"></button>
+                            <button class="btn btn-sm border rounded-circle p-0 bg-option" data-bg="#0066ff" title="Biru" style="width:36px;height:36px;background:#0066ff;"></button>
+                            <button class="btn btn-sm border rounded-circle p-0 bg-option" data-bg="#ff69b4" title="Pink" style="width:36px;height:36px;background:#ff69b4;"></button>
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bi bi-eyedropper"></i></span>
+                            <input type="color" id="customBgColor" class="form-control form-control-color border" value="#6366f1" title="Warna kustom">
+                            <button class="btn btn-outline-secondary" id="btnApplyCustomBg" data-i18n="apply">Terapkan</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header fw-semibold"><i class="bi bi-sliders2 me-2"></i><span data-i18n="edgeAdj">Penyesuaian Tepi</span></div>
+                    <div class="card-body p-3">
+                        <label class="form-label small" data-i18n="featherLabel">Kehalusan Tepi (Feather)</label>
+                        <input type="range" class="form-range" id="rangeFeather" min="0" max="10" step="0.5" value="0">
+                        <div class="d-flex justify-content-between small text-body-secondary">
+                            <span data-i18n="sharp">Tajam</span><span id="featherVal">0px</span><span data-i18n="smooth">Halus</span>
+                        </div>
+
+                        <label class="form-label small mt-3" data-i18n="erodeLabel">Erode / Expand Tepi</label>
+                        <input type="range" class="form-range" id="rangeErode" min="-5" max="5" step="1" value="0">
+                        <div class="d-flex justify-content-between small text-body-secondary">
+                            <span>Erode</span><span id="erodeVal">0px</span><span>Expand</span>
+                        </div>
+
+                        <button class="btn btn-sm btn-outline-primary w-100 mt-3" id="btnApplyEdge">
+                            <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="applyAdj">Terapkan Penyesuaian</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header fw-semibold"><i class="bi bi-download me-2"></i><span data-i18n="download">Unduh Hasil</span></div>
+                    <div class="card-body p-3">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" id="btnDownloadPNG">
+                                <i class="bi bi-filetype-png me-2"></i><span data-i18n="dlPng">Unduh PNG (Transparan)</span>
+                            </button>
+                            <button class="btn btn-outline-primary" id="btnDownloadJPG">
+                                <i class="bi bi-filetype-jpg me-2"></i><span data-i18n="dlJpg">Unduh JPG (Dengan Background)</span>
+                            </button>
+                            <div class="input-group input-group-sm mt-1">
+                                <span class="input-group-text" data-i18n="jpgQualityLabel">Kualitas JPG</span>
+                                <input type="number" class="form-control" id="jpgQuality" value="92" min="10" max="100">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <button class="btn btn-outline-secondary" id="btnDownloadWebP">
+                                <i class="bi bi-filetype-raw me-2"></i><span data-i18n="dlWebp">Unduh WebP</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4" id="historySection">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <h5 class="fw-semibold mb-0"><i class="bi bi-clock-history me-2"></i><span data-i18n="sessionHistory">Riwayat Sesi</span></h5>
+                <span class="badge text-bg-warning local-data-badge"><i class="bi bi-device-hdd me-1"></i><span data-i18n="localOnly">Data hanya tersimpan lokal di perangkat Anda</span></span>
+            </div>
+            <div class="d-flex gap-3 flex-wrap" id="historyList"></div>
+        </div>
+    </div>
+</section>
+
+<div class="modal fade" id="cropModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-crop me-2"></i><span data-i18n="cropResizeTitle">Crop & Resize Hasil</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-pills mb-3" role="tablist">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabCrop" data-i18n="cropTab">Crop</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabResize" data-i18n="resizeTab">Resize</button></li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="tabCrop">
+                        <div class="text-center mb-3">
+                            <div id="cropContainer">
+                                <img id="cropImage" alt="Crop Preview">
+                            </div>
+                        </div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col"><label class="form-label small">X</label><input type="number" class="form-control form-control-sm" id="cropX" value="0" min="0"></div>
+                            <div class="col"><label class="form-label small">Y</label><input type="number" class="form-control form-control-sm" id="cropY" value="0" min="0"></div>
+                            <div class="col"><label class="form-label small" data-i18n="width">Lebar</label><input type="number" class="form-control form-control-sm" id="cropW" value="100" min="1"></div>
+                            <div class="col"><label class="form-label small" data-i18n="height">Tinggi</label><input type="number" class="form-control form-control-sm" id="cropH" value="100" min="1"></div>
+                            <div class="col-auto"><button class="btn btn-primary btn-sm" id="btnApplyCrop"><i class="bi bi-check-lg me-1"></i><span data-i18n="applyCrop">Terapkan Crop</span></button></div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="tabResize">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small" data-i18n="newWidth">Lebar Baru (px)</label>
+                                <input type="number" class="form-control" id="resizeW" min="1">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small" data-i18n="newHeight">Tinggi Baru (px)</label>
+                                <input type="number" class="form-control" id="resizeH" min="1">
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chkAspectRatio" checked>
+                                    <label class="form-check-label small" for="chkAspectRatio" data-i18n="keepRatio">Pertahankan rasio aspek</label>
+                                </div>
+                                <button class="btn btn-primary btn-sm w-100" id="btnApplyResize"><i class="bi bi-arrows-angle-expand me-1"></i><span data-i18n="applyResize">Terapkan Resize</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="checklistModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-list-check me-2"></i><span data-i18n="checklistTitle">Checklist Review Rilis</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-body-secondary" data-i18n="checklistDesc">Lakukan pengujian berikut sebelum setiap rilis atau pembaruan library:</p>
+                <h6 class="fw-semibold mt-3" data-i18n="clFileTest">Pengujian Upload File</h6>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl1" class="form-check-input me-2"><label for="cl1">Upload file JPG/JPEG</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl2" class="form-check-input me-2"><label for="cl2">Upload file PNG</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl3" class="form-check-input me-2"><label for="cl3">Upload file WebP</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl4" class="form-check-input me-2"><label for="cl4">Upload file HEIC (jika didukung browser)</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl5" class="form-check-input me-2"><label for="cl5">Tolak file non-gambar (PDF, TXT, dll)</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl6" class="form-check-input me-2"><label for="cl6">Tolak file &gt; 20MB</label></div>
+                <h6 class="fw-semibold mt-3" data-i18n="clBrowserTest">Kompatibilitas Browser</h6>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl7" class="form-check-input me-2"><label for="cl7">Google Chrome (Desktop & Mobile)</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl8" class="form-check-input me-2"><label for="cl8">Mozilla Firefox</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl9" class="form-check-input me-2"><label for="cl9">Safari (macOS / iOS)</label></div>
+                <h6 class="fw-semibold mt-3" data-i18n="clMobileTest">Pengujian Mobile</h6>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl10" class="form-check-input me-2"><label for="cl10">Perangkat Android kelas menengah</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl11" class="form-check-input me-2"><label for="cl11">Perangkat iOS (iPhone/iPad)</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl12" class="form-check-input me-2"><label for="cl12">Responsivitas layout di layar kecil</label></div>
+                <h6 class="fw-semibold mt-3" data-i18n="clFuncTest">Fungsionalitas Utama</h6>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl13" class="form-check-input me-2"><label for="cl13">Background removal berhasil</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl14" class="form-check-input me-2"><label for="cl14">Download PNG/JPG/WebP berfungsi</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl15" class="form-check-input me-2"><label for="cl15">Batch processing berfungsi</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl16" class="form-check-input me-2"><label for="cl16">Crop & Resize berfungsi</label></div>
+                <div class="checklist-item mb-1"><input type="checkbox" id="cl17" class="form-check-input me-2"><label for="cl17">Multi-bahasa (ID/EN) berfungsi</label></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-outline-secondary" id="btnResetChecklist"><i class="bi bi-arrow-counterclockwise me-1"></i><span data-i18n="resetChecklist">Reset Checklist</span></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="helpModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-question-circle me-2"></i><span data-i18n="helpTitle">Panduan Penggunaan</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="accordion" id="helpAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" data-bs-toggle="collapse" data-bs-target="#help1" data-i18n="helpQ1">Bagaimana cara menggunakan?</button>
+                        </h2>
+                        <div id="help1" class="accordion-collapse collapse show" data-bs-parent="#helpAccordion">
+                            <div class="accordion-body" data-i18n-html="helpA1">
+                                <ol>
+                                    <li>Upload gambar dengan drag & drop atau klik area upload.</li>
+                                    <li>Tunggu proses AI menghapus latar belakang.</li>
+                                    <li>Sesuaikan hasil dengan opsi background, penyesuaian tepi, crop & resize.</li>
+                                    <li>Unduh hasil dalam format PNG, JPG, atau WebP.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#help2" data-i18n="helpQ2">Apakah gambar saya aman?</button>
+                        </h2>
+                        <div id="help2" class="accordion-collapse collapse" data-bs-parent="#helpAccordion">
+                            <div class="accordion-body" data-i18n="helpA2">Ya! Seluruh proses dilakukan 100% di browser Anda. Tidak ada gambar yang dikirim ke server manapun.</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#help3" data-i18n="helpQ3">Apa itu Batch Processing?</button>
+                        </h2>
+                        <div id="help3" class="accordion-collapse collapse" data-bs-parent="#helpAccordion">
+                            <div class="accordion-body" data-i18n="helpA3">Anda dapat memilih beberapa gambar sekaligus. Gambar akan diproses satu per satu secara otomatis dengan indikator progres antrian.</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#help4" data-i18n="helpQ4">Kenapa gambar saya di-resize?</button>
+                        </h2>
+                        <div id="help4" class="accordion-collapse collapse" data-bs-parent="#helpAccordion">
+                            <div class="accordion-body" data-i18n="helpA4">Gambar dengan dimensi lebih dari 4000px otomatis di-downscale untuk performa optimal. Aktifkan opsi "Kualitas tinggi" di halaman upload untuk memproses resolusi penuh.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="appToast" class="toast" role="alert">
+        <div class="toast-header">
+            <i class="bi bi-info-circle text-primary me-2"></i>
+            <strong class="me-auto" id="toastTitle">Notifikasi</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body" id="toastBody"></div>
+    </div>
+</div>
+
+<footer class="border-top py-3 mt-5">
+    <div class="container text-center">
+        <small class="text-body-secondary">
+            BG Remover Pro &mdash; Ditenagai oleh <a href="https://github.com/imgly/background-removal-js" target="_blank" class="text-decoration-none">@imgly/background-removal</a> &amp; Bootstrap 5.3.8.
+            <span data-i18n="footerNote">Semua pemrosesan dilakukan di browser Anda.</span>
+        </small>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+<script type="module" src="function.js"></script>
+</body>
+</html>
